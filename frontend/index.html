@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IIT JEE AI Discipline OS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>IIT JEE AI Discipline OS</h1>
+            <nav class="nav-links">
+                <a href="/" class="active">Tasks</a>
+                <a href="/dashboard">Dashboard</a>
+            </nav>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="points-display">0</div>
+                <div class="stat-label">Total Points</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="discipline-display">0%</div>
+                <div class="stat-label">Discipline Score</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="sleep-display">0h</div>
+                <div class="stat-label">Sleep (Last 24h)</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="margin: 0;">Today's Schedule</h2>
+                <button class="btn btn-primary" id="generate-btn">Regenerate Schedule</button>
+            </div>
+            <div id="task-list" class="task-list">
+                <!-- Tasks will be loaded here -->
+                <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                    Loading your discipline schedule...
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="active-task-card" style="display: none; border-left: 8px solid var(--primary);">
+            <h3>Current Active Task</h3>
+            <div id="active-task-content"></div>
+            <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+                <button class="btn btn-primary" id="complete-btn">Mark Completed</button>
+                <button class="btn" style="background: #e2e8f0;" id="start-btn">Start Session</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

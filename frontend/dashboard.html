@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | IIT JEE AI Discipline OS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>IIT JEE AI Discipline OS</h1>
+            <nav class="nav-links">
+                <a href="/">Tasks</a>
+                <a href="/dashboard" class="active">Dashboard</a>
+            </nav>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="points-display">0</div>
+                <div class="stat-label">Total Points</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="discipline-display">0%</div>
+                <div class="stat-label">Discipline Score</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="sleep-display">0h</div>
+                <div class="stat-label">Sleep (Last 24h)</div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div class="card">
+                <h3>Study Time Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="studyChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Subject Performance</h3>
+                <div class="chart-container">
+                    <canvas id="subjectChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Weekly Productivity Heatmap</h3>
+            <div class="chart-container">
+                <canvas id="productivityChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simple Chart.js initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            const ctx1 = document.getElementById('studyChart').getContext('2d');
+            new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Physics', 'Chemistry', 'Math', 'Rest'],
+                    datasets: [{
+                        data: [30, 25, 35, 10],
+                        backgroundColor: ['#2563eb', '#10b981', '#f59e0b', '#64748b']
+                    }]
+                }
+            });
+
+            const ctx2 = document.getElementById('subjectChart').getContext('2d');
+            new Chart(ctx2, {
+                type: 'radar',
+                data: {
+                    labels: ['Physics', 'Chemistry', 'Math', 'Discipline', 'Focus'],
+                    datasets: [{
+                        label: 'Current Performance',
+                        data: [65, 75, 80, 90, 85],
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.2)'
+                    }]
+                }
+            });
+
+            const ctx3 = document.getElementById('productivityChart').getContext('2d');
+            new Chart(ctx3, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Points Earned',
+                        data: [120, 150, 180, 140, 200, 250, 190],
+                        borderColor: '#10b981',
+                        tension: 0.4
+                    }]
+                }
+            });
+        });
+    </script>
+</body>
+</html>
