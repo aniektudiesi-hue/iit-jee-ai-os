@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sleep Tracking | IIT JEE AI Discipline OS</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>IIT JEE AI Discipline OS</h1>
+            <nav class="nav-links">
+                <a href="/">Tasks</a>
+                <a href="/sleep" class="active">Sleep</a>
+                <a href="/dashboard">Dashboard</a>
+            </nav>
+        </header>
+
+        <!-- Sleep Control Section -->
+        <div class="card" id="sleep-control-card">
+            <h2>🌙 Sleep Tracking</h2>
+            <div class="sleep-status">
+                <div id="sleep-status-display" style="text-align: center; padding: 2rem;">
+                    <p style="font-size: 1.125rem; color: var(--text-muted);">No active sleep session</p>
+                </div>
+            </div>
+            <div class="sleep-controls" style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
+                <button class="btn btn-primary" id="start-sleep-btn" style="display: none;">Start Sleep (11 PM - 6 AM)</button>
+                <button class="btn btn-danger" id="stop-sleep-btn" style="display: none;">Wake Up & Stop Sleep</button>
+            </div>
+            <p style="text-align: center; color: var(--text-muted); font-size: 0.875rem; margin-top: 1rem;">
+                💡 Tip: You can only start sleep between 11 PM and 6 AM. Click "Wake Up" to stop tracking and calculate sleep quality.
+            </p>
+        </div>
+
+        <!-- Sleep Quality Analysis -->
+        <div class="card" id="sleep-quality-card" style="display: none;">
+            <h2>📊 Last Sleep Session Analysis</h2>
+            <div class="sleep-analysis-grid">
+                <div class="analysis-item">
+                    <div class="analysis-label">Sleep Duration</div>
+                    <div class="analysis-value" id="sleep-duration">0h 0m</div>
+                </div>
+                <div class="analysis-item">
+                    <div class="analysis-label">Sleep Quality Score</div>
+                    <div class="analysis-value" id="sleep-quality-score">0%</div>
+                </div>
+                <div class="analysis-item">
+                    <div class="analysis-label">REM Cycles</div>
+                    <div class="analysis-value" id="rem-cycles">0</div>
+                </div>
+                <div class="analysis-item">
+                    <div class="analysis-label">Fatigue Level</div>
+                    <div class="analysis-value" id="fatigue-level">0/10</div>
+                </div>
+            </div>
+            <div style="margin-top: 1.5rem; padding: 1rem; background: #f8fafc; border-radius: 0.5rem;">
+                <p id="sleep-quality-feedback" style="margin: 0; color: var(--text-muted);"></p>
+            </div>
+        </div>
+
+        <!-- Sleep History -->
+        <div class="card">
+            <h2>📅 Sleep History (Last 7 Days)</h2>
+            <div class="sleep-history-grid" id="sleep-history-grid">
+                <!-- Sleep history items will be populated here -->
+            </div>
+            <div style="margin-top: 1.5rem;">
+                <h3>Weekly Sleep Trend</h3>
+                <div class="chart-container">
+                    <canvas id="sleepTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sleep Quality Breakdown -->
+        <div class="card">
+            <h2>🔍 Sleep Quality Breakdown</h2>
+            <div class="sleep-breakdown-grid">
+                <div class="breakdown-item">
+                    <div class="breakdown-label">Ideal Sleep Range</div>
+                    <div class="breakdown-value">7-9 hours</div>
+                    <div class="breakdown-description">Optimal for cognitive function and recovery</div>
+                </div>
+                <div class="breakdown-item">
+                    <div class="breakdown-label">REM Sleep</div>
+                    <div class="breakdown-value">~90 min per cycle</div>
+                    <div class="breakdown-description">Essential for memory consolidation</div>
+                </div>
+                <div class="breakdown-item">
+                    <div class="breakdown-label">Sleep Efficiency</div>
+                    <div class="breakdown-value" id="sleep-efficiency">0%</div>
+                    <div class="breakdown-description">Percentage of time asleep vs. in bed</div>
+                </div>
+                <div class="breakdown-item">
+                    <div class="breakdown-label">Consistency Score</div>
+                    <div class="breakdown-value" id="consistency-score">0%</div>
+                    <div class="breakdown-description">How consistent your sleep schedule is</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sleep Recommendations -->
+        <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <h2 style="color: white;">💤 Sleep Recommendations</h2>
+            <ul style="list-style: none; padding: 0;">
+                <li style="margin-bottom: 0.75rem;">✅ Maintain a consistent sleep schedule (same time every night)</li>
+                <li style="margin-bottom: 0.75rem;">✅ Aim for 7-9 hours of sleep daily for optimal performance</li>
+                <li style="margin-bottom: 0.75rem;">✅ Avoid screens 30 minutes before sleep</li>
+                <li style="margin-bottom: 0.75rem;">✅ Keep your room cool and dark</li>
+                <li>✅ If fatigue is high, the system will automatically reduce your workload</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="/static/sleep.js"></script>
+</body>
+</html>

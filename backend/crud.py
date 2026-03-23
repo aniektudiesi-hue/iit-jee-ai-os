@@ -97,3 +97,27 @@ def get_active_task(db: Session):
         models.Task.start_time <= now,
         models.Task.end_time >= now
     ).first()
+
+# --- Sleep Session CRUD ---
+
+def get_active_sleep_session(db: Session):
+    return db.query(models.SleepSession).filter(models.SleepSession.is_active == True).first()
+
+def create_sleep_session(db: Session, sleep_session: schemas.SleepSessionCreate):
+    db_sleep_session = models.SleepSession(**sleep_session.dict())
+    db.add(db_sleep_session)
+    db.commit()
+    db.refresh(db_sleep_session)
+    return db_sleep_session
+
+def update_sleep_session(db: Session, session_id: int, sleep_session_update: schemas.SleepSessionUpdate):
+    db_sleep_session = db.query(models.SleepSession).filter(models.SleepSession.id == session_id).first()
+    if db_sleep_session:
+        for key, value in sleep_session_update.dict(exclude_unset=True).items():
+            setattr(db_sleep_session, key, value)
+        db.commit()
+        db.refresh(db_sleep_session)
+    return db_sleep_session
+
+def get_sleep_sessions(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.SleepSession).offset(skip).limit(limit).all()

@@ -61,8 +61,34 @@ class DailySummaryBase(BaseModel):
     total_rest_minutes: int
     sleep_duration_minutes: int
     points_earned_today: int
+    sleep_quality_score: float
+    rem_cycle_count: int
 
 class DailySummary(DailySummaryBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+class SleepSessionBase(BaseModel):
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    duration_minutes: int = 0
+    sleep_quality_score: float = 0.0
+    rem_cycle_count: int = 0
+    is_active: bool = True
+
+class SleepSessionCreate(SleepSessionBase):
+    pass
+
+class SleepSessionUpdate(BaseModel):
+    end_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    sleep_quality_score: Optional[float] = None
+    rem_cycle_count: Optional[int] = None
+    is_active: Optional[bool] = None
+
+class SleepSession(SleepSessionBase):
     id: int
 
     class Config:

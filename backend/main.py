@@ -43,14 +43,17 @@ def auto_generate_daily_schedule():
             crud.create_task(db, task_data)
         db.commit()
 
-        # Update stats
+        # Update stats and daily summary after schedule generation
         all_tasks = crud.get_tasks(db)
+        latest_sleep_session = crud.get_sleep_sessions(db, limit=1)
+        sleep_quality_today = latest_sleep_session[0].sleep_quality_score if latest_sleep_session and not latest_sleep_session[0].is_active else 0.7
+
         updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
             date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
-            productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
-        ))
+            productivity_score=0.0, subject_weakness_index=\'{}\', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+        ), sleep_quality_today)
         crud.create_or_update_user_stats(db, updated_stats)
-        analytics.update_daily_summary(db, all_tasks)
+        analytics.update_daily_summary(db, all_tasks, latest_sleep_session[0] if latest_sleep_session and not latest_sleep_session[0].is_active else None)
         
         print("✅ Daily schedule auto-generated at midnight")
     except Exception as e:
@@ -63,6 +66,7 @@ async def startup_event():
     """On app startup, check if today's schedule exists. If not, generate it."""
     db = database.SessionLocal()
     try:
+        models.Base.metadata.create_all(bind=engine) # Ensure tables are created
         today_tasks = crud.get_today_tasks(db)
         if not today_tasks:
             print("🔄 No tasks for today. Generating schedule...")
@@ -70,7 +74,7 @@ async def startup_event():
         
         # Start background scheduler for midnight auto-generation
         if not scheduler.running:
-            scheduler.add_job(auto_generate_daily_schedule, 'cron', hour=0, minute=0)
+            scheduler.add_job(auto_generate_daily_schedule, trigger=\'cron\', hour=0, minute=0)
             scheduler.start()
             print("⏰ Background scheduler started for daily auto-generation")
     except Exception as e:
@@ -230,39 +234,69 @@ def generate_schedule_api(db: Session = Depends(get_db)):
     db.commit()
 
     all_tasks = crud.get_tasks(db)
+    latest_sleep_session = crud.get_sleep_sessions(db, limit=1)
+    sleep_quality_today = latest_sleep_session[0].sleep_quality_score if latest_sleep_session and not latest_sleep_session[0].is_active else 0.7
+
     updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
         date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
-        productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
-    ))
+        productivity_score=0.0, subject_weakness_index=\'{}\', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+    ), sleep_quality_today)
     crud.create_or_update_user_stats(db, updated_stats)
-    analytics.update_daily_summary(db, all_tasks)
+    analytics.update_daily_summary(db, all_tasks, latest_sleep_session[0] if latest_sleep_session and not latest_sleep_session[0].is_active else None)
 
     return {"message": f"Generated {len(new_schedule_data)} tasks for today"}
 
-@app.post("/api/log-sleep")
-def log_sleep(sleep_hours: float, db: Session = Depends(get_db)):
-    """Log sleep hours for today"""
-    today = datetime.utcnow().date()
-    stats = crud.get_user_stats(db)
+# --- Sleep Tracking Endpoints ---
+
+@app.post("/api/sleep/start", response_model=schemas.SleepSession)
+def start_sleep_session(db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    # Allow starting sleep only after 11 PM (23:00) and before 6 AM (06:00)
+    if not (now.hour >= 23 or now.hour < 6):
+        raise HTTPException(status_code=400, detail="Sleep can only be started between 11 PM and 6 AM.")
+
+    active_session = crud.get_active_sleep_session(db)
+    if active_session:
+        raise HTTPException(status_code=400, detail="An active sleep session is already running.")
     
-    if stats is None:
-        stats = models.UserStats(
-            date=today,
-            sleep_hours=sleep_hours,
-            total_points=0,
-            fatigue_level=0,
-            discipline_score=0.0,
-            focus_score=0.0,
-            productivity_score=0.0,
-            subject_weakness_index='{}',
-            time_efficiency=0.0,
-            sleep_compliance_score=1.0,
-            focus_consistency_score=0.0
-        )
-    else:
-        stats.sleep_hours = sleep_hours
+    sleep_session_create = schemas.SleepSessionCreate(start_time=now)
+    return crud.create_sleep_session(db, sleep_session_create)
+
+@app.post("/api/sleep/stop", response_model=schemas.SleepSession)
+def stop_sleep_session(db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    active_session = crud.get_active_sleep_session(db)
+    if not active_session:
+        raise HTTPException(status_code=400, detail="No active sleep session to stop.")
     
-    db.add(stats)
-    db.commit()
-    db.refresh(stats)
-    return stats
+    duration_minutes = int((now - active_session.start_time).total_seconds() / 60)
+    sleep_quality, rem_cycles = analytics.calculate_sleep_quality_and_rem(duration_minutes)
+
+    sleep_session_update = schemas.SleepSessionUpdate(
+        end_time=now,
+        duration_minutes=duration_minutes,
+        sleep_quality_score=sleep_quality,
+        rem_cycle_count=rem_cycles,
+        is_active=False
+    )
+    updated_session = crud.update_sleep_session(db, active_session.id, sleep_session_update)
+
+    # Update UserStats and DailySummary with new sleep data
+    all_tasks = crud.get_tasks(db)
+    user_stats = crud.get_user_stats(db)
+    if user_stats:
+        user_stats.sleep_hours = duration_minutes / 60
+        updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats, sleep_quality)
+        crud.create_or_update_user_stats(db, updated_stats)
+    
+    analytics.update_daily_summary(db, all_tasks, updated_session)
+
+    return updated_session
+
+@app.get("/api/sleep/active", response_model=Optional[schemas.SleepSession])
+def get_active_sleep_session_api(db: Session = Depends(get_db)):
+    return crud.get_active_sleep_session(db)
+
+@app.get("/api/sleep/history", response_model=List[schemas.SleepSession])
+def get_sleep_history_api(db: Session = Depends(get_db)):
+    return crud.get_sleep_sessions(db)

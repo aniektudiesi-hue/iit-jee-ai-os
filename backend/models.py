@@ -31,11 +31,11 @@ class UserStats(Base):
     fatigue_level = Column(Integer, default=0) # 1-10
     discipline_score = Column(Float, default=0.0)
     focus_score = Column(Float, default=0.0)
-    productivity_score = Column(Float, default=0.0) # New
-    subject_weakness_index = Column(String, default="{}") # New: JSON string of weak subjects
-    time_efficiency = Column(Float, default=0.0) # New
-    sleep_compliance_score = Column(Float, default=0.0) # New
-    focus_consistency_score = Column(Float, default=0.0) # New
+    productivity_score = Column(Float, default=0.0)
+    subject_weakness_index = Column(String, default="{}") # JSON string of weak subjects
+    time_efficiency = Column(Float, default=0.0)
+    sleep_compliance_score = Column(Float, default=0.0)
+    focus_consistency_score = Column(Float, default=0.0)
 
 class DailySummary(Base):
     __tablename__ = "daily_summaries"
@@ -50,3 +50,16 @@ class DailySummary(Base):
     total_rest_minutes = Column(Integer, default=0)
     sleep_duration_minutes = Column(Integer, default=0)
     points_earned_today = Column(Integer, default=0)
+    sleep_quality_score = Column(Float, default=0.0) # New: 0-1 score
+    rem_cycle_count = Column(Integer, default=0) # New: Estimated REM cycles
+
+class SleepSession(Base):
+    __tablename__ = "sleep_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    start_time = Column(DateTime, default=datetime.datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+    duration_minutes = Column(Integer, default=0)
+    sleep_quality_score = Column(Float, default=0.0)
+    rem_cycle_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True) # True if user is currently sleeping

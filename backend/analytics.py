@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 from . import models, schemas
 
 # --- AI Behavior Engine --- #
@@ -18,7 +18,8 @@ def calculate_discipline_score(tasks: List[models.Task]) -> float:
             'is_mandatory': t.is_mandatory,
             'start_time': t.start_time,
             'completed_at': t.completed_at,
-            'started_at': t.started_at
+            'started_at': t.started_at,
+            'duration': t.duration # Task duration in minutes
         } for t in tasks
     ])
     
@@ -30,18 +31,16 @@ def calculate_discipline_score(tasks: List[models.Task]) -> float:
         max_possible_score += difficulty_points
 
         if row['status'] == 'COMPLETED':
-            task_start = row['start_time']
+            task_start = row['started_at'] if row['started_at'] else row['start_time']
             task_completed = row['completed_at']
             
             if task_completed and task_start:
                 time_to_complete = (task_completed - task_start).total_seconds() / 60
-                # Assuming average task duration is around 60-120 mins for calculation
-                # This needs to be more dynamic based on actual task duration
-                expected_duration = 60 # Placeholder, should come from task.duration
+                expected_duration = row['duration'] # Use actual task duration
 
-                if time_to_complete <= expected_duration * 0.8: # Early completion
+                if time_to_complete <= expected_duration * 0.9: # Early completion (10% buffer)
                     total_score += difficulty_points * 1.2 # Quality bonus
-                elif time_to_complete <= expected_duration * 1.2: # On-time
+                elif time_to_complete <= expected_duration * 1.1: # On-time (10% buffer)
                     total_score += difficulty_points
                 else: # Late completion
                     total_score += difficulty_points * 0.7 # Reduced points
@@ -62,24 +61,20 @@ def calculate_discipline_score(tasks: List[models.Task]) -> float:
     normalized_score = max(0.0, min(1.0, total_score / max_possible_score))
     return normalized_score
 
-def calculate_fatigue_level(user_stats: models.UserStats, missed_tasks_today: int) -> int:
-    """Calculate fatigue level based on sleep, missed tasks, and past performance."""
+def calculate_fatigue_level(sleep_quality_score: float, missed_tasks_today: int) -> int:
+    """Calculate fatigue level based on sleep quality and missed tasks."""
     fatigue = 0
-    # Poor sleep increases fatigue
-    if user_stats and user_stats.sleep_hours < 7:
-        fatigue += int((7 - user_stats.sleep_hours) * 2) # 2 points per hour under 7
+    
+    # Poor sleep increases fatigue (lower sleep_quality_score means higher fatigue)
+    fatigue += int((1 - sleep_quality_score) * 5) # Max 5 points for very poor sleep
     
     # Missed tasks increase fatigue
-    fatigue += missed_tasks_today * 3 # 3 points per missed task
-
-    # High fatigue from previous day carries over
-    if user_stats and user_stats.fatigue_level > 5:
-        fatigue += 1
+    fatigue += missed_tasks_today * 2 # 2 points per missed task
 
     return min(10, max(0, fatigue)) # Cap fatigue between 0 and 10
 
 def get_subject_weakness_index(tasks: List[models.Task]) -> Dict[str, float]:
-    """Identify weak subjects based on performance."""
+    """Identify weak subjects based on performance over all tasks."""
     subject_performance = {}
     for task in tasks:
         if task.subject not in subject_performance:
@@ -95,9 +90,29 @@ def get_subject_weakness_index(tasks: List[models.Task]) -> Dict[str, float]:
             completion_rate = data['completed'] / data['total']
             weakness_index[subject] = 1 - completion_rate # Higher value means weaker
         else:
-            weakness_index[subject] = 0.5 # Neutral if no tasks
+            weakness_index[subject] = 0.5 # Neutral if no tasks for this subject
             
     return weakness_index
+
+def calculate_sleep_quality_and_rem(duration_minutes: int) -> (float, int):
+    """Calculate sleep quality score (0-1) and estimated REM cycles."""
+    target_sleep_minutes = 7 * 60 # 7 hours
+    
+    # Sleep Quality Score:
+    # Ideal sleep is 7-9 hours. Penalize for too little or too much.
+    if duration_minutes < 6 * 60: # Less than 6 hours
+        quality_score = max(0.0, (duration_minutes - 4 * 60) / (2 * 60)) * 0.5 # Scales from 0 to 0.5
+    elif duration_minutes > 9 * 60: # More than 9 hours
+        quality_score = max(0.0, 1 - (duration_minutes - 9 * 60) / (2 * 60)) * 0.8 # Scales from 0.8 down
+    else: # 6-9 hours is good
+        quality_score = 0.7 + (duration_minutes - 6 * 60) / (3 * 60) * 0.3 # Scales from 0.7 to 1.0
+    quality_score = round(max(0.0, min(1.0, quality_score)), 2)
+
+    # Estimated REM cycles:
+    # Average REM cycle is about 90 minutes (1.5 hours)
+    rem_cycle_count = int(duration_minutes / 90) if duration_minutes > 0 else 0
+    
+    return quality_score, rem_cycle_count
 
 def generate_daily_schedule(db_session, user_stats: Optional[models.UserStats] = None, previous_tasks: Optional[List[models.Task]] = None) -> List[schemas.TaskCreate]:
     """
@@ -109,10 +124,12 @@ def generate_daily_schedule(db_session, user_stats: Optional[models.UserStats] =
     now = datetime.utcnow()
     today_date = now.date()
     
-    # Default sleep hours if no stats or sleep data
-    sleep_hours_yesterday = user_stats.sleep_hours if user_stats else 7.0
-    missed_tasks_yesterday = sum(1 for t in previous_tasks if t.status in ['MISSED', 'LOCKED']) if previous_tasks else 0
-    fatigue_level = calculate_fatigue_level(user_stats, missed_tasks_yesterday)
+    # Get previous day's sleep quality for fatigue calculation
+    last_daily_summary = db_session.query(models.DailySummary).order_by(models.DailySummary.date.desc()).first()
+    sleep_quality_yesterday = last_daily_summary.sleep_quality_score if last_daily_summary else 0.7 # Default if no data
+    missed_tasks_yesterday = sum(1 for t in previous_tasks if t.status in ['MISSED', 'LOCKED'] and t.start_time.date() == (today_date - timedelta(days=1))) if previous_tasks else 0
+    
+    fatigue_level = calculate_fatigue_level(sleep_quality_yesterday, missed_tasks_yesterday)
     subject_weakness = get_subject_weakness_index(previous_tasks) if previous_tasks else {}
 
     # Adjust workload based on fatigue
@@ -122,18 +139,15 @@ def generate_daily_schedule(db_session, user_stats: Optional[models.UserStats] =
     total_study_minutes_target = max(4 * 60, total_study_minutes_target) # Minimum 4 hours study
 
     # Define fixed blocks
-    # Sleep block (11 PM to 6 AM) - represented as a task for the previous day ending at 6 AM today
-    # Or for today starting at 11 PM
-    # For schedule generation, we assume sleep has already happened or will happen.
     # We'll schedule tasks from 6 AM to 11 PM.
-    
     current_time = datetime.combine(today_date, datetime.min.time()) + timedelta(hours=6) # Start at 6 AM
     end_of_day = datetime.combine(today_date, datetime.min.time()) + timedelta(hours=23) # End at 11 PM
 
     # Mandatory Sleep Block (for the *next* day, or representing the current day's required sleep)
     # This is a placeholder to ensure the rule is met, actual scheduling is for waking hours
+    # The actual sleep session will be tracked by the user
     schedule.append(schemas.TaskCreate(
-        title="SLEEP BLOCK (7 hours minimum)",
+        title="MANDATORY SLEEP BLOCK (7 hours minimum)",
         subject="Health",
         difficulty=1,
         start_time=datetime.combine(today_date, datetime.min.time()) + timedelta(hours=23), # 11 PM today
@@ -233,7 +247,7 @@ def generate_daily_schedule(db_session, user_stats: Optional[models.UserStats] =
     schedule.sort(key=lambda x: x.start_time)
     return schedule
 
-def update_user_stats_from_tasks(db_session, tasks: List[models.Task], current_stats: models.UserStats) -> models.UserStats:
+def update_user_stats_from_tasks(db_session, tasks: List[models.Task], current_stats: models.UserStats, sleep_quality_today: float) -> models.UserStats:
     """
     Updates user statistics based on completed tasks and daily performance.
     """
@@ -248,18 +262,18 @@ def update_user_stats_from_tasks(db_session, tasks: List[models.Task], current_s
     # Update total points
     current_stats.total_points += points_earned_today
     current_stats.discipline_score = discipline_score # This could be an average or daily score
-    current_stats.fatigue_level = calculate_fatigue_level(current_stats, sum(1 for t in today_tasks if t.status in ['MISSED', 'LOCKED']))
+    current_stats.fatigue_level = calculate_fatigue_level(sleep_quality_today, sum(1 for t in today_tasks if t.status in ['MISSED', 'LOCKED']))
     current_stats.subject_weakness_index = get_subject_weakness_index(tasks) # Update based on all tasks
 
     # Placeholder for other stats (productivity, time efficiency, focus consistency)
     current_stats.productivity_score = (current_stats.productivity_score * 0.8 + discipline_score * 0.2) # Simple moving average
     current_stats.time_efficiency = 0.0 # Needs more complex calculation
     current_stats.focus_consistency_score = 0.0 # Needs more complex calculation
-    current_stats.sleep_compliance_score = 1.0 if current_stats.sleep_hours >= 7 else current_stats.sleep_hours / 7.0
+    current_stats.sleep_compliance_score = sleep_quality_today
 
     return current_stats
 
-def update_daily_summary(db_session, tasks: List[models.Task]):
+def update_daily_summary(db_session, tasks: List[models.Task], sleep_session: Optional[models.SleepSession] = None):
     today = datetime.utcnow().date()
     daily_summary = db_session.query(models.DailySummary).filter(models.DailySummary.date == today).first()
     if not daily_summary:
@@ -275,11 +289,10 @@ def update_daily_summary(db_session, tasks: List[models.Task]):
     daily_summary.total_rest_minutes = sum(t.duration for t in today_tasks if (t.is_rest_block or t.is_free_time) and t.status == 'COMPLETED')
     daily_summary.points_earned_today = sum(t.points_awarded for t in today_tasks if t.status == 'COMPLETED')
 
-    # Sleep duration needs to be captured separately, perhaps from a dedicated sleep tracking entry
-    # For now, we'll assume it's part of user_stats and update it from there if available
-    user_stats = db_session.query(models.UserStats).filter(models.UserStats.date == today).first()
-    if user_stats:
-        daily_summary.sleep_duration_minutes = int(user_stats.sleep_hours * 60)
+    if sleep_session:
+        daily_summary.sleep_duration_minutes = sleep_session.duration_minutes
+        daily_summary.sleep_quality_score = sleep_session.sleep_quality_score
+        daily_summary.rem_cycle_count = sleep_session.rem_cycle_count
 
     db_session.add(daily_summary)
     db_session.commit()
