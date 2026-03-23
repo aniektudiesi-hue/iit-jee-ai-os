@@ -1,12 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Optional
 import os
 from datetime import datetime, timedelta
+import json
+from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import crud, models, schemas, database
+from . import crud, models, schemas, database, analytics
 from .database import engine, get_db
 
 # Create database tables
@@ -15,8 +17,72 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="IIT JEE AI Discipline OS")
 
 # Mount static files
-# In production, frontend might be served separately, but for single-repo deployment:
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+# Background scheduler for auto-generation
+scheduler = BackgroundScheduler()
+
+def auto_generate_daily_schedule():
+    """Auto-generate schedule at midnight every day"""
+    db = database.SessionLocal()
+    try:
+        user_stats = crud.get_user_stats(db)
+        previous_tasks = crud.get_past_tasks(db)
+
+        # Clear existing tasks for today
+        today_tasks = crud.get_today_tasks(db)
+        for task in today_tasks:
+            db.delete(task)
+        db.commit()
+
+        # Generate new schedule
+        new_schedule_data = analytics.generate_daily_schedule(db, user_stats, previous_tasks)
+        
+        # Save to database
+        for task_data in new_schedule_data:
+            crud.create_task(db, task_data)
+        db.commit()
+
+        # Update stats
+        all_tasks = crud.get_tasks(db)
+        updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
+            date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
+            productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+        ))
+        crud.create_or_update_user_stats(db, updated_stats)
+        analytics.update_daily_summary(db, all_tasks)
+        
+        print("✅ Daily schedule auto-generated at midnight")
+    except Exception as e:
+        print(f"❌ Error in auto-generation: {e}")
+    finally:
+        db.close()
+
+@app.on_event("startup")
+async def startup_event():
+    """On app startup, check if today's schedule exists. If not, generate it."""
+    db = database.SessionLocal()
+    try:
+        today_tasks = crud.get_today_tasks(db)
+        if not today_tasks:
+            print("🔄 No tasks for today. Generating schedule...")
+            auto_generate_daily_schedule()
+        
+        # Start background scheduler for midnight auto-generation
+        if not scheduler.running:
+            scheduler.add_job(auto_generate_daily_schedule, 'cron', hour=0, minute=0)
+            scheduler.start()
+            print("⏰ Background scheduler started for daily auto-generation")
+    except Exception as e:
+        print(f"Error during startup: {e}")
+    finally:
+        db.close()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown scheduler on app shutdown"""
+    if scheduler.running:
+        scheduler.shutdown()
 
 @app.get("/")
 async def read_index():
@@ -26,53 +92,177 @@ async def read_index():
 async def read_dashboard():
     return FileResponse("frontend/dashboard.html")
 
+# API Endpoints
+
 @app.get("/api/tasks", response_model=List[schemas.Task])
-def read_tasks(db: Session = Depends(get_db)):
+def get_today_tasks_api(db: Session = Depends(get_db)):
+    """Get today's tasks with automatic status enforcement"""
+    crud.check_and_update_task_statuses(db)
     return crud.get_today_tasks(db)
 
+@app.get("/api/tasks/past", response_model=List[schemas.Task])
+def get_past_tasks_api(db: Session = Depends(get_db)):
+    """Get past tasks (completed/missed)"""
+    return crud.get_past_tasks(db)
+
+@app.get("/api/tasks/active", response_model=Optional[schemas.Task])
+def get_active_task_api(db: Session = Depends(get_db)):
+    """Get currently active task"""
+    crud.check_and_update_task_statuses(db)
+    return crud.get_active_task(db)
+
 @app.post("/api/tasks", response_model=schemas.Task)
-def create_task(task: schemas.TaskCreate, db: Session = Depends(get_db)):
+def create_task_api(task: schemas.TaskCreate, db: Session = Depends(get_db)):
+    """Create a new task (admin use)"""
     return crud.create_task(db, task)
 
 @app.patch("/api/tasks/{task_id}", response_model=schemas.Task)
-def update_task(task_id: int, task_update: schemas.TaskUpdate, db: Session = Depends(get_db)):
+def update_task_api(task_id: int, task_update: schemas.TaskUpdate, db: Session = Depends(get_db)):
+    """Update task details"""
     db_task = crud.update_task(db, task_id, task_update)
     if db_task is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task_update.status == "COMPLETED" and db_task.completed_at:
+        db_task.points_awarded = db_task.difficulty * 10
+        crud.update_task(db, task_id, schemas.TaskUpdate(points_awarded=db_task.points_awarded))
+
+    return db_task
+
+@app.post("/api/tasks/{task_id}/start", response_model=schemas.Task)
+def start_task_api(task_id: int, db: Session = Depends(get_db)):
+    """Start a task (marks as STARTED within grace window)"""
+    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    now = datetime.utcnow()
+    grace_window = db_task.start_time + timedelta(minutes=10)
+    
+    if db_task.status in ["PENDING", "ACTIVE"] and now <= grace_window:
+        db_task.status = "STARTED"
+        db_task.started_at = now
+        db.add(db_task)
+        db.commit()
+        db.refresh(db_task)
+    else:
+        raise HTTPException(status_code=400, detail="Task cannot be started. Grace window expired or already locked.")
+    return db_task
+
+@app.post("/api/tasks/{task_id}/complete", response_model=schemas.Task)
+def complete_task_api(task_id: int, db: Session = Depends(get_db)):
+    """Complete a task (only if STARTED)"""
+    db_task = db.query(models.Task).filter(models.Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if db_task.status == "STARTED":
+        db_task.status = "COMPLETED"
+        db_task.completed_at = datetime.utcnow()
+        db_task.points_awarded = db_task.difficulty * 10
+        
+        if db_task.started_at and (db_task.completed_at - db_task.started_at).total_seconds() / 60 < db_task.duration:
+            db_task.points_awarded += db_task.difficulty * 5  # Early completion bonus
+        
+        db.add(db_task)
+        db.commit()
+        db.refresh(db_task)
+    else:
+        raise HTTPException(status_code=400, detail="Task must be in STARTED status to complete.")
     return db_task
 
 @app.get("/api/stats", response_model=schemas.UserStats)
-def read_stats(db: Session = Depends(get_db)):
+def get_user_stats_api(db: Session = Depends(get_db)):
+    """Get user statistics"""
     stats = crud.get_user_stats(db)
     if stats is None:
-        # Return default stats if none exist
         return schemas.UserStats(
             id=0,
             date=datetime.utcnow(),
             total_points=0,
-            sleep_hours=0.0,
+            sleep_hours=7.0,
             fatigue_level=0,
             discipline_score=0.0,
-            focus_score=0.0
+            focus_score=0.0,
+            productivity_score=0.0,
+            subject_weakness_index={},
+            time_efficiency=0.0,
+            sleep_compliance_score=1.0,
+            focus_consistency_score=0.0
         )
+    if isinstance(stats.subject_weakness_index, str):
+        stats.subject_weakness_index = json.loads(stats.subject_weakness_index) if stats.subject_weakness_index else {}
     return stats
 
-from . import analytics
+@app.get("/api/daily-summary", response_model=Optional[schemas.DailySummary])
+def get_daily_summary_api(db: Session = Depends(get_db)):
+    """Get today's summary"""
+    today = datetime.utcnow().date()
+    return crud.get_daily_summary(db, today)
+
+@app.get("/api/time-info")
+def get_time_info():
+    """Get current time and day info for frontend"""
+    now = datetime.utcnow()
+    return {
+        "current_time": now.isoformat(),
+        "day_of_week": now.strftime("%A"),
+        "date": now.strftime("%Y-%m-%d"),
+        "hour": now.hour,
+        "minute": now.minute
+    }
 
 @app.post("/api/generate-schedule")
-def generate_schedule(db: Session = Depends(get_db)):
-    # 1. Clear existing tasks for today (to avoid duplicates)
+def generate_schedule_api(db: Session = Depends(get_db)):
+    """Manually regenerate schedule (for testing/admin)"""
+    user_stats = crud.get_user_stats(db)
+    previous_tasks = crud.get_past_tasks(db)
+
     today_tasks = crud.get_today_tasks(db)
     for task in today_tasks:
         db.delete(task)
     db.commit()
 
-    # 2. Generate new schedule using AI engine
-    new_schedule = analytics.generate_daily_schedule()
+    new_schedule_data = analytics.generate_daily_schedule(db, user_stats, previous_tasks)
     
-    # 3. Save to database
-    for task_data in new_schedule:
-        task_create = schemas.TaskCreate(**task_data)
-        crud.create_task(db, task_create)
-        
-    return {"message": f"Generated {len(new_schedule)} tasks for today"}
+    for task_data in new_schedule_data:
+        crud.create_task(db, task_data)
+    db.commit()
+
+    all_tasks = crud.get_tasks(db)
+    updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
+        date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
+        productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+    ))
+    crud.create_or_update_user_stats(db, updated_stats)
+    analytics.update_daily_summary(db, all_tasks)
+
+    return {"message": f"Generated {len(new_schedule_data)} tasks for today"}
+
+@app.post("/api/log-sleep")
+def log_sleep(sleep_hours: float, db: Session = Depends(get_db)):
+    """Log sleep hours for today"""
+    today = datetime.utcnow().date()
+    stats = crud.get_user_stats(db)
+    
+    if stats is None:
+        stats = models.UserStats(
+            date=today,
+            sleep_hours=sleep_hours,
+            total_points=0,
+            fatigue_level=0,
+            discipline_score=0.0,
+            focus_score=0.0,
+            productivity_score=0.0,
+            subject_weakness_index='{}',
+            time_efficiency=0.0,
+            sleep_compliance_score=1.0,
+            focus_consistency_score=0.0
+        )
+    else:
+        stats.sleep_hours = sleep_hours
+    
+    db.add(stats)
+    db.commit()
+    db.refresh(stats)
+    return stats

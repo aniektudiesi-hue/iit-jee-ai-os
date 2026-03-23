@@ -32,6 +32,10 @@
                 <div class="stat-value" id="sleep-display">0h</div>
                 <div class="stat-label">Sleep (Last 24h)</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value" id="fatigue-display">0</div>
+                <div class="stat-label">Fatigue Level</div>
+            </div>
         </div>
 
         <div class="card">
@@ -51,8 +55,34 @@
             <h3>Current Active Task</h3>
             <div id="active-task-content"></div>
             <div style="margin-top: 1rem; display: flex; gap: 1rem;">
-                <button class="btn btn-primary" id="complete-btn">Mark Completed</button>
-                <button class="btn" style="background: #e2e8f0;" id="start-btn">Start Session</button>
+                <button class="btn btn-primary" id="start-btn">Start Task (10 min grace)</button>
+                <button class="btn" style="background: #10b981;" id="focus-btn">Enter Focus Mode</button>
+            </div>
+        </div>
+
+        <div class="card" id="past-tasks-card" style="display: none;">
+            <h3>Previous Tasks (Completed & Missed)</h3>
+            <div id="past-task-list" class="task-list"></div>
+        </div>
+    </div>
+
+    <!-- Focus Mode Modal -->
+    <div id="focus-modal" class="modal" style="display: none;">
+        <div class="focus-container">
+            <div class="focus-header">
+                <h2 id="focus-title">Focus Mode</h2>
+                <button class="btn-close" id="exit-focus-btn">&times;</button>
+            </div>
+            <div class="focus-timer">
+                <div class="timer-display" id="timer-display">00:00</div>
+                <div class="timer-label">Time Remaining</div>
+            </div>
+            <div class="focus-task-info">
+                <div id="focus-task-details"></div>
+            </div>
+            <div class="focus-controls">
+                <button class="btn btn-success" id="complete-focus-btn">Complete Task</button>
+                <button class="btn btn-danger" id="pause-focus-btn">Pause</button>
             </div>
         </div>
     </div>
