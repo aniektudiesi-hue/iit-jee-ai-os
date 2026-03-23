@@ -50,7 +50,7 @@ def auto_generate_daily_schedule():
 
         updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
             date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
-            productivity_score=0.0, subject_weakness_index=\'{}\', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+            productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
         ), sleep_quality_today)
         crud.create_or_update_user_stats(db, updated_stats)
         analytics.update_daily_summary(db, all_tasks, latest_sleep_session[0] if latest_sleep_session and not latest_sleep_session[0].is_active else None)
@@ -74,7 +74,7 @@ async def startup_event():
         
         # Start background scheduler for midnight auto-generation
         if not scheduler.running:
-            scheduler.add_job(auto_generate_daily_schedule, trigger=\'cron\', hour=0, minute=0)
+            scheduler.add_job(auto_generate_daily_schedule, trigger='cron', hour=0, minute=0)
             scheduler.start()
             print("⏰ Background scheduler started for daily auto-generation")
     except Exception as e:
@@ -239,7 +239,7 @@ def generate_schedule_api(db: Session = Depends(get_db)):
 
     updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
         date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
-        productivity_score=0.0, subject_weakness_index=\'{}\', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+        productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
     ), sleep_quality_today)
     crud.create_or_update_user_stats(db, updated_stats)
     analytics.update_daily_summary(db, all_tasks, latest_sleep_session[0] if latest_sleep_session and not latest_sleep_session[0].is_active else None)
