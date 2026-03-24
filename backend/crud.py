@@ -120,4 +120,4 @@ def update_sleep_session(db: Session, session_id: int, sleep_session_update: sch
     return db_sleep_session
 
 def get_sleep_sessions(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.SleepSession).offset(skip).limit(limit).all()
+    return db.query(models.SleepSession).order_by(models.SleepSession.start_time.desc()).offset(skip).limit(limit).all()
