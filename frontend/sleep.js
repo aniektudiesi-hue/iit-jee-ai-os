@@ -35,11 +35,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const response = await fetch('/api/sleep/active');
             if (response.ok) {
-                activeSleepSession = await response.json();
+                const data = await response.json();
+                if (data && data.id) {
+                    activeSleepSession = data;
+                } else {
+                    activeSleepSession = null;
+                }
+                updateSleepUI();
+            } else {
+                console.warn('No active sleep session found');
+                activeSleepSession = null;
                 updateSleepUI();
             }
         } catch (error) {
             console.error('Error fetching active sleep session:', error);
+            activeSleepSession = null;
+            updateSleepUI();
         }
     }
 
@@ -88,27 +99,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Start sleep
     startSleepBtn.addEventListener('click', async () => {
         try {
+            console.log('Starting sleep session...');
             const response = await fetch('/api/sleep/start', { method: 'POST' });
+            
             if (response.ok) {
                 activeSleepSession = await response.json();
+                console.log('✅ Sleep session created:', activeSleepSession);
                 updateSleepUI();
                 alert('🌙 Sleep tracking started. Sleep well!');
             } else {
-                const error = await response.json();
-                alert(`❌ Error: ${error.detail}`);
+                let errorMessage = 'Unknown error';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.detail || errorData.message || 'Failed to start sleep session';
+                } catch (e) {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                console.error('Error response:', errorMessage);
+                alert(`❌ Error: ${errorMessage}`);
             }
         } catch (error) {
             console.error('Error starting sleep:', error);
-            alert('❌ Error starting sleep session');
+            alert(`❌ Error starting sleep session: ${error.message}`);
         }
     });
 
     // Stop sleep
     stopSleepBtn.addEventListener('click', async () => {
         try {
+            console.log('Stopping sleep session...');
             const response = await fetch('/api/sleep/stop', { method: 'POST' });
+            
             if (response.ok) {
                 const completedSession = await response.json();
+                console.log('✅ Sleep session completed:', completedSession);
                 activeSleepSession = null;
                 updateSleepUI();
                 
@@ -120,12 +144,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 alert(`✅ Sleep session ended!\n\n📊 Sleep Quality: ${Math.round(completedSession.sleep_quality_score * 100)}%\n💤 REM Cycles: ${completedSession.rem_cycle_count}`);
             } else {
-                const error = await response.json();
-                alert(`❌ Error: ${error.detail}`);
+                let errorMessage = 'Unknown error';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.detail || errorData.message || 'Failed to stop sleep session';
+                } catch (e) {
+                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                }
+                console.error('Error response:', errorMessage);
+                alert(`❌ Error: ${errorMessage}`);
             }
         } catch (error) {
             console.error('Error stopping sleep:', error);
-            alert('❌ Error stopping sleep session');
+            alert(`❌ Error stopping sleep session: ${error.message}`);
         }
     });
 
@@ -194,12 +225,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     function initializeSleepCharts(sessions) {
         const last7Days = sessions.filter(s => !s.is_active).slice(0, 7).reverse();
         
+        if (last7Days.length === 0) {
+            console.log('No sleep data available for charts');
+            return;
+        }
+        
         const dates = last7Days.map(s => new Date(s.start_time).toLocaleDateString('en-US', { weekday: 'short' }));
         const durations = last7Days.map(s => s.duration_minutes / 60);
         const qualities = last7Days.map(s => s.sleep_quality_score * 100);
         
-        const ctx = document.getElementById('sleepTrendChart').getContext('2d');
-        new Chart(ctx, {
+        const ctx = document.getElementById('sleepTrendChart');
+        if (!ctx) {
+            console.warn('Sleep trend chart canvas not found');
+            return;
+        }
+        
+        new Chart(ctx.getContext('2d'), {
             type: 'line',
             data: {
                 labels: dates,

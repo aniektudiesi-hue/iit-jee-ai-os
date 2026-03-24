@@ -46,14 +46,16 @@ def auto_generate_daily_schedule():
         # Update stats and daily summary after schedule generation
         all_tasks = crud.get_tasks(db)
         latest_sleep_session = crud.get_sleep_sessions(db, limit=1)
-        sleep_quality_today = latest_sleep_session[0].sleep_quality_score if latest_sleep_session and not latest_sleep_session[0].is_active else 0.7
+        current_sleep_session = latest_sleep_session[0] if latest_sleep_session else None
+        sleep_quality_today = current_sleep_session.sleep_quality_score if current_sleep_session and not current_sleep_session.is_active else 0.7
 
-        updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
+        initial_user_stats = user_stats if user_stats else models.UserStats(
             date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
-            productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
-        ), sleep_quality_today)
+            productivity_score=0.0, subject_weakness_index="{}", time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+        )
+        updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, initial_user_stats, sleep_quality_today)
         crud.create_or_update_user_stats(db, updated_stats)
-        analytics.update_daily_summary(db, all_tasks, latest_sleep_session[0] if latest_sleep_session and not latest_sleep_session[0].is_active else None)
+        analytics.update_daily_summary(db, all_tasks, current_sleep_session if current_sleep_session and not current_sleep_session.is_active else None)
         
         print("✅ Daily schedule auto-generated at midnight")
     except Exception as e:
@@ -235,14 +237,16 @@ def generate_schedule_api(db: Session = Depends(get_db)):
 
     all_tasks = crud.get_tasks(db)
     latest_sleep_session = crud.get_sleep_sessions(db, limit=1)
-    sleep_quality_today = latest_sleep_session[0].sleep_quality_score if latest_sleep_session and not latest_sleep_session[0].is_active else 0.7
+    current_sleep_session = latest_sleep_session[0] if latest_sleep_session else None
+    sleep_quality_today = current_sleep_session.sleep_quality_score if current_sleep_session and not current_sleep_session.is_active else 0.7
 
-    updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, user_stats if user_stats else models.UserStats(
+    initial_user_stats = user_stats if user_stats else models.UserStats(
         date=datetime.utcnow(), total_points=0, sleep_hours=7.0, fatigue_level=0, discipline_score=0.0, focus_score=0.0,
-        productivity_score=0.0, subject_weakness_index='{}', time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
-    ), sleep_quality_today)
+        productivity_score=0.0, subject_weakness_index="{}", time_efficiency=0.0, sleep_compliance_score=1.0, focus_consistency_score=0.0
+    )
+    updated_stats = analytics.update_user_stats_from_tasks(db, all_tasks, initial_user_stats, sleep_quality_today)
     crud.create_or_update_user_stats(db, updated_stats)
-    analytics.update_daily_summary(db, all_tasks, latest_sleep_session[0] if latest_sleep_session and not latest_sleep_session[0].is_active else None)
+    analytics.update_daily_summary(db, all_tasks, current_sleep_session if current_sleep_session and not current_sleep_session.is_active else None)
 
     return {"message": f"Generated {len(new_schedule_data)} tasks for today"}
 
