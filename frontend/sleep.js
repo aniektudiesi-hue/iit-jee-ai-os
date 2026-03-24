@@ -15,13 +15,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const timeInfo = await response.json();
             const hour = timeInfo.hour;
 
-            // Allow sleep only between 11 PM (23) and 6 AM (6)
-            const canStartSleep = hour >= 23 || hour < 6;
+            // Allow sleep only between 11 AM (11) and 4 AM (next day)
+            const canStartSleep = hour >= 11 || hour < 4;
             startSleepBtn.style.display = canStartSleep ? 'block' : 'none';
             
             if (!canStartSleep) {
                 sleepStatusDisplay.innerHTML = `
-                    <p style="font-size: 1.125rem; color: var(--danger);">⏰ Sleep tracking is only available between 11 PM and 6 AM</p>
+                    <p style="font-size: 1.125rem; color: var(--danger);">⏰ Sleep tracking is only available between 11 AM and 4 AM</p>
                     <p style="color: var(--text-muted);">Current time: ${timeInfo.day_of_week}, ${timeInfo.date} at ${String(hour).padStart(2, '0')}:${String(timeInfo.minute).padStart(2, '0')}</p>
                 `;
             }

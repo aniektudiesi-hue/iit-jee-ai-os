@@ -77,9 +77,17 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Filter and sort tasks by time
         const now = new Date();
-        const upcomingTasks = tasks.filter(t => new Date(t.start_time) >= now).sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-        const activeTasks = tasks.filter(t => t.status === 'ACTIVE' || t.status === 'STARTED');
-        const completedTasks = tasks.filter(t => t.status === 'COMPLETED');
+        // Filter tasks to only show those for the current day, or active/started tasks from previous days that haven't been resolved
+        const today = now.toISOString().slice(0, 10);
+        const relevantTasks = tasks.filter(t => {
+            const taskDate = new Date(t.start_time).toISOString().slice(0, 10);
+            return taskDate === today || (t.status === 'ACTIVE' || t.status === 'STARTED');
+        });
+
+        const upcomingTasks = relevantTasks.filter(t => new Date(t.start_time) > now && t.status === 'PENDING').sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+        const activeTasks = relevantTasks.filter(t => t.status === 'ACTIVE' || t.status === 'STARTED');
+        const completedTasks = relevantTasks.filter(t => t.status === 'COMPLETED');
+        const lockedMissedTasks = relevantTasks.filter(t => t.status === 'LOCKED' || t.status === 'MISSED');
 
         // Show active tasks first
         if (activeTasks.length > 0) {
@@ -94,6 +102,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Show upcoming tasks
+        // Show locked/missed tasks
+        if (lockedMissedTasks.length > 0) {
+            const lockedMissedHeader = document.createElement('div');
+            lockedMissedHeader.style.cssText = 'font-weight: 700; color: var(--danger); margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.875rem;';
+            lockedMissedHeader.textContent = '🚫 Locked / Missed';
+            taskList.appendChild(lockedMissedHeader);
+
+            lockedMissedTasks.forEach(task => {
+                taskList.appendChild(createTaskElement(task));
+            });
+        }
+
         if (upcomingTasks.length > 0) {
             const upcomingHeader = document.createElement('div');
             upcomingHeader.style.cssText = 'font-weight: 700; color: var(--secondary); margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.875rem;';

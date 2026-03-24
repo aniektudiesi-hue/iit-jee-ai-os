@@ -252,8 +252,9 @@ def generate_schedule_api(db: Session = Depends(get_db)):
 def start_sleep_session(db: Session = Depends(get_db)):
     now = datetime.utcnow()
     # Allow starting sleep only after 11 PM (23:00) and before 6 AM (06:00)
-    if not (now.hour >= 23 or now.hour < 6):
-        raise HTTPException(status_code=400, detail="Sleep can only be started between 11 PM and 6 AM.")
+    # Allow starting sleep from 11 AM (11:00) until 3:59 AM (before 4 AM)
+    if not (now.hour >= 11 or now.hour < 4):
+        raise HTTPException(status_code=400, detail="Sleep can only be started between 11 AM and 4 AM (next day).")
 
     active_session = crud.get_active_sleep_session(db)
     if active_session:
